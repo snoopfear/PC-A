@@ -107,7 +107,7 @@ with open('wallets.txt', 'r') as file:
         wallets.append((private_key, public_address))
 
 # Define range for bet amount (in ETH)
-bet_amount_range = (0.01, 0.1)  # Example: between 0.01 and 0.1 ETH
+bet_amount_range = (0.00049, 0.00051)  # Example: between 0.01 and 0.1 ETH
 
 for private_key, public_address in wallets:
     # Initialize nonce
