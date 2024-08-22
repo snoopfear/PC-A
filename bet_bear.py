@@ -126,7 +126,7 @@ def main():
 
     # Load wallets from file
     wallets = []
-    with open('wallets.txt', 'r') as file:
+    with open('wallets_bear.txt', 'r') as file:
         for line in file:
             private_key, public_address = line.strip().split()
             wallets.append((private_key, public_address))
