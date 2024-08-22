@@ -1,7 +1,5 @@
 import json
 import time
-import random
-import logging
 from web3 import Web3
 
 def display_logo():
@@ -13,179 +11,117 @@ def display_logo():
  | | | \ \/ / |\/| |/ _ \ / _ \ |
  | |_| |>  <| |  | | (_) |  __/ | <3
   \___//_/\_\_|  |_|\___/ \___|_|
-                                 
-                                 
+                              
+                              
     """
     print(logo)
 
-def load_abi(file_path):
-    with open(file_path, 'r') as abi_file:
-        abi_content = json.load(abi_file)
-        if isinstance(abi_content, dict) and 'result' in abi_content:
-            return json.loads(abi_content['result'])
-        return abi_content
+# Display the logo
+display_logo()
 
-def setup_web3():
-    w3 = Web3(Web3.HTTPProvider('https://arb1.arbitrum.io/rpc'))
-    if not w3.is_connected():
-        print("Failed to connect to the network")
-        exit()
-    return w3
+# Load contract ABI from a JSON file
+with open('ContractABI.json', 'r') as abi_file:
+    abi_content = json.load(abi_file)
+    if isinstance(abi_content, dict) and 'result' in abi_content:
+        contract_abi = json.loads(abi_content['result'])
+    else:
+        contract_abi = abi_content
 
-def initialize_contract(w3, abi, address):
-    return w3.eth.contract(address=Web3.to_checksum_address(address), abi=abi)
+# Connect to Arbitrum network (replace with your provider)
+w3 = Web3(Web3.HTTPProvider('https://arb1.arbitrum.io/rpc'))
 
-def bet_bear(w3, contract, private_key, public_address, epoch, bet_amount_wei, nonce):
-    try:
-        base_fee = w3.eth.get_block('latest')['baseFeePerGas']
-        max_priority_fee = w3.to_wei('2', 'gwei')
-        max_fee_per_gas = base_fee + max_priority_fee
-        gas_limit = 160860
-        txn = contract.functions.betBear(epoch).build_transaction({
-            'chainId': 42161,  # Arbitrum mainnet chain ID
-            'gas': gas_limit,
-            'maxFeePerGas': max_fee_per_gas,
-            'maxPriorityFeePerGas': max_priority_fee,
-            'nonce': nonce,
-            'value': bet_amount_wei
-        })
-        signed_txn = w3.eth.account.sign_transaction(txn, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
-        nonce += 1
-        return tx_hash, nonce
-    except Exception as e:
-        logging.error(f"Error sending bet transaction: {e}")
-        return None, nonce
+# Check if connected to the network
+if not w3.is_connected():
+    print("Failed to connect to the network")
+    exit()
 
-def claim_rewards(w3, contract, private_key, public_address, epoch, nonce):
-    try:
-        base_fee = w3.eth.get_block('latest')['baseFeePerGas']
-        max_priority_fee = w3.to_wei('2', 'gwei')
-        max_fee_per_gas = base_fee + max_priority_fee
-        txn = contract.functions.claim([epoch]).build_transaction({
-            'chainId': 42161,  # Arbitrum mainnet chain ID
-            'gas': 168860,
-            'maxFeePerGas': max_fee_per_gas,
-            'maxPriorityFeePerGas': max_priority_fee,
-            'nonce': nonce
-        })
-        signed_txn = w3.eth.account.sign_transaction(txn, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
-        nonce += 1
-        return tx_hash, nonce
-    except Exception as e:
-        logging.error(f"Error sending claim transaction: {e}")
-        return None, nonce
+# Contract address (convert to checksum address)
+contract_address = Web3.to_checksum_address('0x1cdc19b13729f16c5284a0ace825f83fc9d799f4')
 
-def has_bet(contract, public_address, epoch):
+# Initialize contract
+contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+
+# Load wallet information from file
+with open('wallets_bear.json', 'r') as wallets_file:
+    wallets = json.load(wallets_file)
+
+def bet_bear(epoch, private_key, public_address, bet_amount_wei):
+    base_fee = w3.eth.get_block('latest')['baseFeePerGas']
+    max_priority_fee = w3.to_wei('2', 'gwei')
+    max_fee_per_gas = base_fee + max_priority_fee
+    gas_limit = 160860
+    nonce = w3.eth.get_transaction_count(public_address, 'pending')
+    txn = contract.functions.betBear(epoch).build_transaction({
+        'chainId': 42161,
+        'gas': gas_limit,
+        'maxFeePerGas': max_fee_per_gas,
+        'maxPriorityFeePerGas': max_priority_fee,
+        'nonce': nonce,
+        'value': bet_amount_wei
+    })
+    signed_txn = w3.eth.account.sign_transaction(txn, private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+    return tx_hash
+
+def claim_rewards(epoch, private_key, public_address):
+    base_fee = w3.eth.get_block('latest')['baseFeePerGas']
+    max_priority_fee = w3.to_wei('2', 'gwei')
+    max_fee_per_gas = base_fee + max_priority_fee
+    nonce = w3.eth.get_transaction_count(public_address, 'pending')
+    txn = contract.functions.claim([epoch]).build_transaction({
+        'chainId': 42161,
+        'gas': 168860,
+        'maxFeePerGas': max_fee_per_gas,
+        'maxPriorityFeePerGas': max_priority_fee,
+        'nonce': nonce
+    })
+    signed_txn = w3.eth.account.sign_transaction(txn, private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+    return tx_hash
+
+def has_bet(epoch, public_address):
     try:
         return contract.functions.ledger(epoch, public_address).call()[1] > 0
     except Exception as e:
-        logging.error(f"Error checking if bet is placed for epoch {epoch}: {e}")
+        print(f"Error checking if bet is placed for epoch {epoch}: {e}")
         return False
 
-def has_bet_bull(contract, public_address, epoch):
-    try:
-        bet_info = contract.functions.ledger(epoch, public_address).call()
-        return bet_info[1] > 0
-    except Exception as e:
-        logging.error(f"Error checking if betBull is placed for epoch {epoch}: {e}")
-        return False
-
-def claim_last_5_epochs(w3, contract, private_key, public_address, current_epoch, nonce):
+def claim_last_5_epochs(current_epoch, private_key, public_address):
     for epoch_to_check in range(current_epoch - 5, current_epoch):
         if epoch_to_check > 0:
-            try:
-                if contract.functions.claimable(epoch_to_check, public_address).call():
-                    print(f"Claiming rewards for epoch {epoch_to_check}")
-                    time.sleep(60)  # Delay for 1 minute before claiming rewards
-                    claim_tx, nonce = claim_rewards(w3, contract, private_key, public_address, epoch_to_check, nonce)
-                    if claim_tx:
-                        print(f"Claim transaction hash: {claim_tx.hex()}")
-            except Exception as e:
-                logging.error(f"Error claiming rewards for epoch {epoch_to_check}: {e}")
+            if contract.functions.claimable(epoch_to_check, public_address).call():
+                print(f"Claiming rewards for epoch {epoch_to_check}")
+                time.sleep(60)
+                claim_tx = claim_rewards(epoch_to_check, private_key, public_address)
+                print(f"Claim transaction hash: {claim_tx.hex()}")
 
-def wait_for_transaction_receipt(w3, tx_hash):
-    try:
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)  # Wait for up to 2 minutes
-        return receipt
-    except Exception as e:
-        logging.error(f"Error waiting for transaction receipt: {e}")
-        return None
+while True:
+    current_epoch = contract.functions.currentEpoch().call()
+    print(f"Current Epoch: {current_epoch}")
 
-def main():
-    display_logo()
-    
-    # Load ABI and setup Web3
-    abi = load_abi('ContractABI.json')
-    w3 = setup_web3()
-    contract = initialize_contract(w3, abi, '0x1cdc19b13729f16c5284a0ace825f83fc9d799f4')
+    for wallet in wallets:
+        private_key = wallet['private_key']
+        public_address = wallet['public_address']
+        bet_amount = wallet['bet_amount']
+        bet_amount_wei = w3.to_wei(bet_amount, 'ether')
 
-    # Set up logging
-    logging.basicConfig(filename='script.log', level=logging.ERROR)
+        if not has_bet(current_epoch, public_address):
+            account_balance = w3.eth.get_balance(public_address)
+            base_fee = w3.eth.get_block('latest')['baseFeePerGas']
+            max_priority_fee = w3.to_wei('2', 'gwei')
+            max_fee_per_gas = base_fee + max_priority_fee
+            gas_limit = 168860
+            total_cost = bet_amount_wei + (gas_limit * max_fee_per_gas)
+            if account_balance < total_cost:
+                print(f"Insufficient funds for wallet {public_address}. Needed: {total_cost}, Available: {account_balance}")
+                continue
 
-    # Load wallets from file
-    wallets = []
-    with open('wallets_bear.txt', 'r') as file:
-        for line in file:
-            private_key, public_address = line.strip().split()
-            wallets.append((private_key, public_address))
+            print(f"Placing bet for wallet {public_address}")
+            bet_tx = bet_bear(current_epoch, private_key, public_address, bet_amount_wei)
+            print(f"Bet transaction hash: {bet_tx.hex()}")
 
-    # Define range for bet amount (in ETH)
-    bet_amount_range = (0.0001, 0.00011)  # Example: between 0.01 and 0.1 ETH
+        # Check and claim rewards for the last 5 epochs
+        claim_last_5_epochs(current_epoch, private_key, public_address)
 
-    for private_key, public_address in wallets:
-        # Initialize nonce
-        nonce = w3.eth.get_transaction_count(public_address, 'pending')
-
-        current_epoch = contract.functions.currentEpoch().call()
-        claim_last_5_epochs(w3, contract, private_key, public_address, current_epoch, nonce)
-
-        previous_epoch = current_epoch
-        bet_placed_epoch = None
-
-        print(f"Starting script for {public_address}. Initial Epoch: {previous_epoch}")
-
-        try:
-            while True:
-                current_epoch = contract.functions.currentEpoch().call()
-
-                if current_epoch > previous_epoch:
-                    print(f"Current Epoch: {current_epoch}")
-                    previous_epoch = current_epoch
-                    bet_placed_epoch = None
-
-                if bet_placed_epoch != current_epoch and not has_bet(contract, public_address, current_epoch) and not has_bet_bull(contract, public_address, current_epoch):
-                    account_balance = w3.eth.get_balance(public_address)
-                    base_fee = w3.eth.get_block('latest')['baseFeePerGas']
-                    max_priority_fee = w3.to_wei('2', 'gwei')
-                    max_fee_per_gas = base_fee + max_priority_fee
-                    gas_limit = 168860
-
-                    # Randomly choose a bet amount within the specified range for each bet
-                    bet_amount = random.uniform(*bet_amount_range)
-                    bet_amount_wei = w3.to_wei(bet_amount, 'ether')
-                    total_cost = bet_amount_wei + (gas_limit * max_fee_per_gas)
-
-                    if account_balance < total_cost:
-                        print(f"Insufficient funds to place bet on epoch {current_epoch}. Needed: {total_cost}, Available: {account_balance}")
-                        break
-
-                    print(f"Placing bet on epoch {current_epoch} for {public_address} with amount {bet_amount} ETH")
-                    bet_tx, nonce = bet_bear(w3, contract, private_key, public_address, current_epoch, bet_amount_wei, nonce)
-                    if bet_tx:
-                        print(f"Bet transaction hash: {bet_tx.hex()}")
-                        wait_for_transaction_receipt(w3, bet_tx)
-                        bet_placed_epoch = current_epoch
-
-                else:
-                    print(f"Already placed a bet on epoch {current_epoch}")
-
-                claim_last_5_epochs(w3, contract, private_key, public_address, current_epoch, nonce)
-                time.sleep(5)
-
-        except KeyboardInterrupt:
-            print(f"\nScript interrupted by user for {public_address}. Exiting gracefully...")
-
-if __name__ == "__main__":
-    main()
+    # Wait a short period before checking again
+    time.sleep(5)  # Adjust the sleep time as needed for your use case
