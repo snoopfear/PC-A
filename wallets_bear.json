@@ -1,0 +1,13 @@
+[
+  {
+    "private_key": "YOUR_PRIVATE_KEY_1",
+    "public_address": "YOUR_PUBLIC_ADDRESS_1",
+    "bet_amount": 0.1
+  },
+  {
+    "private_key": "YOUR_PRIVATE_KEY_2",
+    "public_address": "YOUR_PUBLIC_ADDRESS_2",
+    "bet_amount": 0.2
+  }
+]
+
